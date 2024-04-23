@@ -79,6 +79,7 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
     console.error(error);
     res.status(500);
     res.json(error);
+    return;
   }
 };
 
@@ -91,28 +92,35 @@ interface User {
 }
 
 export const loginUser = async (req: CreateUserRequest, res: Response) => {
-  const { username, password } = req.body;
+  try {
+    const { username, password } = req.body;
 
-  const user: User | null = await prisma.user.findUnique({
-    where: {
-      username,
-    },
-  });
+    const user: User | null = await prisma.user.findUnique({
+      where: {
+        username,
+      },
+    });
 
-  if (!user) {
-    res.status(401);
-    res.json({ errMessage: 'Wrong email/password combination' });
+    if (!user) {
+      res.status(401);
+      res.json({ errMessage: 'Wrong email/password combination' });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.password);
+    if (!passwordMatches) {
+      res.status(401);
+      res.json({ errMessage: 'Wrong email/password combination' });
+      return;
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.JWT_PRIVATE_KEY || 'sshhh', { expiresIn: '24h' });
+    res.status(201);
+    res.json({ token });
+  } catch (error) {
+    console.error(error);
+    res.status(500);
+    res.json(error);
     return;
   }
-
-  const passwordMatches = await bcrypt.compare(password, user.password);
-  if (!passwordMatches) {
-    res.status(401);
-    res.json({ errMessage: 'Wrong email/password combination' });
-    return;
-  }
-
-  const token = jwt.sign({ id: user.id }, process.env.JWT_PRIVATE_KEY || 'sshhh', { expiresIn: '24h' });
-  res.status(201);
-  res.json({ token });
 };
