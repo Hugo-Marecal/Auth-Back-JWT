@@ -8,15 +8,15 @@ interface CreateUserRequest extends Request {
     email: string;
     username: string;
     password: string;
-    confirmation: string;
+    confirmPassword: string;
   };
 }
 
 export const createUser = async (req: CreateUserRequest, res: Response) => {
   try {
-    const { email, username, password, confirmation } = req.body;
+    const { email, username, password, confirmPassword } = req.body;
 
-    if (!email || !username || !password || !confirmation) {
+    if (!email || !username || !password || !confirmPassword) {
       res.status(401);
       res.json({ errMessage: 'Please complete all fields' });
       return;
@@ -41,7 +41,7 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
       return;
     }
 
-    if (password !== confirmation) {
+    if (password !== confirmPassword) {
       res.status(401);
       res.json({ errMessage: "Passwords don't match" });
       return;
@@ -74,11 +74,11 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
       return;
     }
 
-    res.json({ succesMessage: 'Your account has been created' });
+    res.json({ successMessage: 'Your account has been created' });
   } catch (error) {
     console.error(error);
     res.status(500);
-    res.json(error);
+    res.json('Internal server error');
     return;
   }
 };
@@ -93,11 +93,11 @@ interface User {
 
 export const loginUser = async (req: CreateUserRequest, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
     const user: User | null = await prisma.user.findUnique({
       where: {
-        username,
+        email,
       },
     });
 
@@ -116,11 +116,11 @@ export const loginUser = async (req: CreateUserRequest, res: Response) => {
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_PRIVATE_KEY || 'sshhh', { expiresIn: '24h' });
     res.status(201);
-    res.json({ token });
+    res.json({ token, successMessage: 'Your are connected' });
   } catch (error) {
     console.error(error);
     res.status(500);
-    res.json(error);
+    res.json('Internal server error');
     return;
   }
 };
