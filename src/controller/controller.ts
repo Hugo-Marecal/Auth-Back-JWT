@@ -1,16 +1,8 @@
 import { Request, Response } from 'express';
+import { CreateUserRequest, User } from '../requestExternsions';
 import bcrypt from 'bcrypt';
 import prisma from '../dbClient';
 import jwt from 'jsonwebtoken';
-
-interface CreateUserRequest extends Request {
-  body: {
-    email: string;
-    username: string;
-    password: string;
-    confirmPassword: string;
-  };
-}
 
 export const createUser = async (req: CreateUserRequest, res: Response) => {
   try {
@@ -83,14 +75,6 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
   }
 };
 
-interface User {
-  id: string;
-  createdAt: Date;
-  email: string;
-  username: string;
-  password: string;
-}
-
 export const loginUser = async (req: CreateUserRequest, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -115,6 +99,7 @@ export const loginUser = async (req: CreateUserRequest, res: Response) => {
     }
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_PRIVATE_KEY || 'sshhh', { expiresIn: '24h' });
+
     res.status(201);
     res.json({ token, successMessage: 'Your are connected' });
   } catch (error) {
@@ -123,4 +108,33 @@ export const loginUser = async (req: CreateUserRequest, res: Response) => {
     res.json('Internal server error');
     return;
   }
+};
+
+export const logoutUser = (req: CreateUserRequest, res: Response) => {
+  res.clearCookie('token');
+  res.status(200);
+  res.json({ successMessage: 'Good Bye' });
+};
+
+export const getAccount = async (req: Request, res: Response) => {
+  const user = req.user;
+
+  if (!user) {
+    return res.status(401).json({ errorMessage: 'Unauthorized' });
+  }
+
+  const { id } = user;
+
+  const userInfo: User | null = await prisma.user.findUnique({
+    where: {
+      id,
+    },
+  });
+
+  if (!userInfo) {
+    return res.status(401).json({ errorMessage: 'User not found' });
+  }
+
+  res.status(200);
+  res.json({ id, username: userInfo.username, successMessage: 'You are connected' });
 };
