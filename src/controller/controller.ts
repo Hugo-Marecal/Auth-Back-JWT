@@ -211,5 +211,3 @@ export const verifyEmail = async (req: Request, res: Response) => {
     return;
   }
 };
-
-// res.json({ successMessage: 'Your email has been verified' });
