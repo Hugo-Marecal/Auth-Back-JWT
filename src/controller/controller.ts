@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { CreateUserRequest, User } from '../requestExternsions';
+import { sendEmail } from '../utils/sendEmail';
 import bcrypt from 'bcrypt';
 import prisma from '../dbClient';
 import jwt from 'jsonwebtoken';
@@ -33,12 +34,6 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
       return;
     }
 
-    if (password !== confirmPassword) {
-      res.status(401);
-      res.json({ errMessage: "Passwords don't match" });
-      return;
-    }
-
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     if (!passwordRegex.test(password)) {
       res.status(401);
@@ -46,6 +41,12 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
         errMessage:
           'The password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, 1 special character and have a minimum length of 8 characters.',
       });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      res.status(401);
+      res.json({ errMessage: "Passwords don't match" });
       return;
     }
 
@@ -66,7 +67,24 @@ export const createUser = async (req: CreateUserRequest, res: Response) => {
       return;
     }
 
-    res.json({ successMessage: 'Your account has been created' });
+    const newVerifyToken = await prisma.token.create({
+      data: {
+        token: jwt.sign({ id: newUser.id }, process.env.JWT_PRIVATE_KEY || 'sshhh', { expiresIn: '1h' }),
+        userId: newUser.id,
+      },
+    });
+
+    if (!newVerifyToken) {
+      res.status(401);
+      res.json({ errMessage: 'Creation failed' });
+      return;
+    }
+
+    if (newVerifyToken.token) {
+      await sendEmail(email, newVerifyToken.token);
+    }
+
+    res.json({ successMessage: 'Account created, please verify your email with the link sent to you' });
   } catch (error) {
     console.error(error);
     res.status(500);
@@ -88,6 +106,12 @@ export const loginUser = async (req: CreateUserRequest, res: Response) => {
     if (!user) {
       res.status(401);
       res.json({ errMessage: 'Wrong email/password combination' });
+      return;
+    }
+
+    if (!user.verify) {
+      res.status(401);
+      res.json({ errMessage: 'Please verify your email' });
       return;
     }
 
@@ -117,24 +141,75 @@ export const logoutUser = (req: CreateUserRequest, res: Response) => {
 };
 
 export const getAccount = async (req: Request, res: Response) => {
-  const user = req.user;
+  try {
+    const user = req.user;
 
-  if (!user) {
-    return res.status(401).json({ errorMessage: 'Unauthorized' });
+    if (!user) {
+      return res.status(401).json({ errorMessage: 'Unauthorized' });
+    }
+
+    const { id } = user;
+
+    const userInfo: User | null = await prisma.user.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!userInfo) {
+      return res.status(401).json({ errorMessage: 'User not found' });
+    }
+
+    res.status(200);
+    res.json({ id, username: userInfo.username, successMessage: 'You are connected' });
+  } catch (error) {
+    console.error(error);
+    res.status(500);
+    res.json('Internal server error');
+    return;
   }
-
-  const { id } = user;
-
-  const userInfo: User | null = await prisma.user.findUnique({
-    where: {
-      id,
-    },
-  });
-
-  if (!userInfo) {
-    return res.status(401).json({ errorMessage: 'User not found' });
-  }
-
-  res.status(200);
-  res.json({ id, username: userInfo.username, successMessage: 'You are connected' });
 };
+
+export const verifyEmail = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      res.status(401);
+      res.json({ errMessage: 'Token not valid' });
+      return;
+    }
+
+    const decodedToken = jwt.verify(token, process.env.JWT_PRIVATE_KEY || 'sshhh');
+
+    if (!decodedToken) {
+      res.status(401);
+      res.json({ errMessage: 'Token not valid' });
+      return;
+    }
+
+    const verifyUser = await prisma.user.update({
+      where: {
+        id: (decodedToken as jwt.JwtPayload).id,
+      },
+      data: {
+        verify: true,
+      },
+    });
+
+    if (!verifyUser) {
+      res.status(401);
+      res.json({ errMessage: 'Verification failed' });
+      return;
+    }
+
+    res.redirect('http://localhost:5173/login?successMessage=Email%20verified%20successfully,%20please%20login');
+  } catch (error) {
+    console.error(error);
+    res.status(500);
+    res.json('Internal server error');
+    return;
+  }
+};
+
+// res.json({ successMessage: 'Your email has been verified' });
