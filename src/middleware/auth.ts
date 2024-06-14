@@ -18,16 +18,17 @@ export const isAuth = async (req: Request, res: Response, next: NextFunction) =>
     if (!token) {
       res.status(401);
       res.json({ errMessage: 'Not authorized' });
+      return;
     }
 
     const decodedToken = jwt.verify(token, process.env.JWT_PRIVATE_KEY || 'sshhh');
     if (!decodedToken) {
       res.status(401);
       res.json({ errMessage: 'Not authorized' });
+      return;
     }
 
     req.user = { id: (decodedToken as JwtPayload).id };
-    console.log(req.user);
     next();
   } catch (error) {
     console.error(error);
